@@ -1,0 +1,12 @@
+node_modules/
+.env
+android-app/.gradle/
+android-app/app/build/
+android-app/build/
+android-app/local.properties
+android-app/*.iml
+android-app/.idea/
+admin-app/dist/
+admin-app/out/
+.DS_Store
+Thumbs.db

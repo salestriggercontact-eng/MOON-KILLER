@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Remote Support - Admin</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- LOGIN VIEW -->
+  <div id="loginView" class="view">
+    <div class="login-box">
+      <h1>Remote Support Admin</h1>
+      <input id="serverUrl" placeholder="Backend URL (https://your-backend.onrender.com)" />
+      <input id="signalingUrl" placeholder="Signaling URL (wss://your-signaling.onrender.com)" />
+      <input id="username" placeholder="Username" />
+      <input id="password" type="password" placeholder="Password" />
+      <button id="loginBtn">Login</button>
+      <p id="loginError" class="error"></p>
+    </div>
+  </div>
+
+  <!-- MAIN DASHBOARD VIEW -->
+  <div id="mainView" class="view hidden">
+    <div class="topbar">
+      <span class="brand">Remote Support</span>
+      <span id="whoami"></span>
+      <button id="pairBtn">Pair New Device</button>
+      <button id="logoutBtn">Logout</button>
+    </div>
+
+    <div class="layout">
+      <!-- LEFT: device list -->
+      <div class="panel devices-panel">
+        <h3>Devices</h3>
+        <div id="deviceList"></div>
+      </div>
+
+      <!-- CENTER: phone screen + controls -->
+      <div class="panel center-panel">
+        <div class="session-toolbar">
+          <span id="sessionStatus">No active session</span>
+          <button id="stopSessionBtn" class="hidden danger">Stop Session</button>
+        </div>
+        <div class="phone-frame">
+          <video id="remoteVideo" autoplay playsinline></video>
+        </div>
+
+        <div class="controls hidden" id="controlBar">
+          <button data-cmd="back">Back</button>
+          <button data-cmd="home">Home</button>
+          <button data-cmd="recents">Recents</button>
+          <button id="longPressToggle" class="toggle">Long-press mode: Off</button>
+        </div>
+        <div class="controls hidden" id="scrollBar">
+          <button data-scroll="up">Scroll ↑</button>
+          <button data-scroll="down">Scroll ↓</button>
+          <button data-scroll="left">Scroll ←</button>
+          <button data-scroll="right">Scroll →</button>
+        </div>
+        <div class="text-input-row hidden" id="textInputRow">
+          <input id="typeTextInput" placeholder="Text to type into focused field" />
+          <button id="sendTextBtn">Send Text</button>
+        </div>
+        <div class="feature-row hidden" id="featureRow">
+          <button id="cameraToggleBtn">Start Camera</button>
+          <button id="switchCameraBtn" class="hidden">Switch Camera</button>
+          <button id="screenshotBtn">Screenshot</button>
+          <button id="uiTreeBtn">Get UI Tree</button>
+          <button id="recordToggleBtn">Start Recording</button>
+        </div>
+      </div>
+
+      <!-- RIGHT: tabs -->
+      <div class="panel right-panel">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="log">Log</button>
+          <button class="tab-btn" data-tab="camera">Camera</button>
+          <button class="tab-btn" data-tab="screenshot">Screenshot</button>
+          <button class="tab-btn" data-tab="uitree">UI Tree</button>
+          <button class="tab-btn" data-tab="upitx">UPI/TX</button>
+          <button class="tab-btn" data-tab="history">History</button>
+          <button class="tab-btn" data-tab="deploy">Deploy</button>
+        </div>
+
+        <div class="tab-content active" id="tab-log">
+          <div id="logBox"></div>
+        </div>
+
+        <div class="tab-content" id="tab-camera">
+          <video id="cameraVideo" autoplay playsinline></video>
+          <p class="hint">Camera preview appears here once started from the control bar.</p>
+        </div>
+
+        <div class="tab-content" id="tab-screenshot">
+          <img id="screenshotImg" class="hidden" />
+          <p id="screenshotHint" class="hint">Tap "Screenshot" in the control bar.</p>
+          <button id="saveScreenshotBtn" class="hidden">Save Screenshot</button>
+        </div>
+
+        <div class="tab-content" id="tab-uitree">
+          <button id="refreshUiTreeBtn">Refresh UI Tree</button>
+          <span id="uiTreeStaleHint" class="hint hidden">Screen content changed - tap Refresh to update.</span>
+          <div class="uitree-layout">
+            <div id="uiTreeBox" class="tree-box"></div>
+            <div id="uiTreeDetail" class="tree-detail">
+              <p class="hint">Click a node to inspect it.</p>
+            </div>
+            <div id="nodeActions" class="node-actions hidden"></div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-upitx">
+          <div class="text-input-row" style="width:100%">
+            <input id="upiSearchInput" placeholder="Search on-screen text (e.g. amount, merchant, status)" />
+            <button id="upiSearchBtn">Search</button>
+          </div>
+          <p class="hint">Searches the most recently fetched UI tree only (the same data already visible in the screen share) - refresh the UI Tree tab first if the screen has changed.</p>
+          <div id="upiResults"></div>
+        </div>
+
+        <div class="tab-content" id="tab-history">
+          <div id="historyList"></div>
+        </div>
+
+        <div class="tab-content" id="tab-deploy">
+          <input type="file" id="apkFileInput" accept=".apk" />
+          <button id="uploadApkBtn">Upload APK</button>
+          <div id="uploadProgressWrap" class="hidden">
+            <div id="uploadProgressBar"></div>
+          </div>
+          <div id="apkList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAIRING MODAL -->
+  <div id="pairModal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Pair Device</h3>
+      <p>Enter the 6-digit code shown on the phone's screen.</p>
+      <input id="pairingCodeInput" maxlength="6" placeholder="123456" />
+      <button id="submitPairBtn">Submit</button>
+      <button id="cancelPairBtn">Cancel</button>
+      <p id="pairStatus"></p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

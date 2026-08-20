@@ -1,0 +1,47 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.vivek.remotesupport"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.vivek.remotesupport"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    implementation "androidx.core:core-ktx:1.12.0"
+    implementation "androidx.appcompat:appcompat:1.6.1"
+    implementation "com.google.android.material:material:1.11.0"
+
+    // WebRTC (community-maintained prebuilt, since org.webrtc:google-webrtc
+    // is no longer resolvable on Maven Central/Google's repo)
+    implementation "io.github.webrtc-sdk:android:144.7559.09"
+
+    // Networking
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "org.java-websocket:Java-WebSocket:1.5.3"
+}

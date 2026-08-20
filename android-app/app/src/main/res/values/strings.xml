@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">Remote Support</string>
+    <string name="accessibility_service_description">Allows the connected support admin to tap, swipe, and navigate on your behalf during an active, user-approved support session. Does not read on-screen text or content.</string>
+
+    <string name="device_id_label">This device\'s ID: %1$s</string>
+    <string name="status_registered">Registered with server.</string>
+    <string name="status_register_failed">Could not reach server. Will retry.</string>
+
+    <string name="get_pairing_code">Get Pairing Code</string>
+    <string name="pairing_code_label">Pairing code: %1$s (valid 5 min)</string>
+    <string name="pairing_code_failed">Could not get pairing code. Check connection.</string>
+
+    <string name="enable_accessibility">Enable Accessibility Service</string>
+    <string name="enable_remote_support">Enable Remote Support</string>
+    <string name="disable_remote_support">Disable Remote Support</string>
+
+    <string name="notif_status_title">Remote Support is active</string>
+    <string name="notif_status_text">Listening for support requests. Tap to open.</string>
+
+    <string name="notif_pairing_request_title">Pairing request from %1$s</string>
+    <string name="notif_session_request_title">Support request from %1$s</string>
+    <string name="notif_request_body">Tap Allow to grant access, or Deny to reject.</string>
+    <string name="allow">Allow</string>
+    <string name="deny">Deny</string>
+
+    <string name="notif_active_session_title">Remote support session active</string>
+    <string name="notif_active_session_text">An admin can see and control this screen. Tap Stop to end it.</string>
+    <string name="stop_session">Stop Session</string>
+</resources>

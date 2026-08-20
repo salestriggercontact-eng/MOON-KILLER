@@ -1,0 +1,315 @@
+:root {
+  --bg: #0f1115;
+  --panel: #161a21;
+  --border: #262b35;
+  --text: #e6e8eb;
+  --muted: #8a92a3;
+  --accent: #3b82f6;
+  --danger: #ef4444;
+  --ok: #22c55e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.hidden { display: none !important; }
+
+.view { height: 100vh; }
+
+/* Login */
+.login-box {
+  max-width: 380px;
+  margin: 120px auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.login-box h1 { font-size: 18px; margin: 0 0 8px; }
+.login-box input {
+  background: #0c0e12;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px;
+  border-radius: 6px;
+}
+.login-box button {
+  background: var(--accent);
+  border: none;
+  color: white;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.error { color: var(--danger); font-size: 13px; min-height: 16px; }
+
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 700; }
+#whoami { color: var(--muted); flex: 1; }
+.topbar button {
+  background: #1f2430;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Layout */
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 300px;
+  height: calc(100vh - 49px);
+}
+.panel {
+  border-right: 1px solid var(--border);
+  padding: 12px;
+  overflow-y: auto;
+}
+.panel h3 { margin-top: 0; font-size: 13px; color: var(--muted); text-transform: uppercase; }
+
+.device-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.device-item:hover { border-color: var(--accent); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.dot.online { background: var(--ok); }
+
+.center-panel { border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; }
+.session-toolbar {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+}
+.danger { background: var(--danger); border: none; color: white; padding: 8px 14px; border-radius: 6px; cursor: pointer; }
+
+.phone-frame {
+  width: 320px;
+  height: 640px;
+  background: #000;
+  border: 4px solid #2a2f3a;
+  border-radius: 28px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.phone-frame video { width: 100%; height: 100%; object-fit: contain; }
+
+.controls { display: flex; gap: 10px; margin-top: 14px; }
+.controls button {
+  background: #1f2430;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.log-panel { border-right: none; font-size: 12px; }
+#logBox div { padding: 4px 0; border-bottom: 1px solid var(--border); color: var(--muted); }
+
+/* Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.modal-box input {
+  background: #0c0e12;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 20px;
+  letter-spacing: 4px;
+  text-align: center;
+}
+.modal-box button {
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+#submitPairBtn { background: var(--accent); color: white; }
+#cancelPairBtn { background: #1f2430; color: var(--text); }
+
+/* ---- Right panel with tabs ---- */
+.right-panel { border-right: none; display: flex; flex-direction: column; padding: 0; }
+.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.tab-btn {
+  flex: 1;
+  min-width: 80px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 10px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab-content { display: none; padding: 12px; overflow-y: auto; flex: 1; }
+.tab-content.active { display: block; }
+
+#cameraVideo { width: 100%; border-radius: 8px; background: #000; }
+.hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+#screenshotImg { width: 100%; border-radius: 6px; border: 1px solid var(--border); }
+
+.tree-box {
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #c9d1d9;
+  background: #0c0e12;
+  padding: 8px;
+  border-radius: 6px;
+  max-height: 100%;
+}
+
+/* ---- Extra control rows ---- */
+.toggle { background: #1f2430; }
+.toggle.active { background: var(--accent); color: white; }
+
+.text-input-row { display: flex; gap: 8px; margin-top: 10px; width: 320px; }
+.text-input-row input {
+  flex: 1;
+  background: #0c0e12;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px;
+  border-radius: 6px;
+}
+.text-input-row button {
+  background: var(--accent);
+  border: none;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.feature-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; }
+.feature-row button {
+  background: #1f2430;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.feature-row button.recording { background: var(--danger); color: white; }
+
+/* ---- History / Deploy lists ---- */
+.history-item, .apk-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.history-item .status-active { color: var(--ok); }
+.history-item .status-ended { color: var(--muted); }
+.apk-item .apk-actions { display: flex; gap: 8px; margin-top: 6px; }
+.apk-item button {
+  background: #1f2430;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+#apkFileInput { color: var(--text); margin-bottom: 8px; display: block; }
+#uploadApkBtn {
+  background: var(--accent); border: none; color: white;
+  padding: 8px 14px; border-radius: 6px; cursor: pointer; margin-bottom: 10px;
+}
+#uploadProgressWrap {
+  background: #0c0e12; border-radius: 6px; height: 8px; margin-bottom: 10px; overflow: hidden;
+}
+#uploadProgressBar { background: var(--accent); height: 100%; width: 0%; transition: width 0.2s; }
+
+/* ---- UI tree with inspection panel ---- */
+#refreshUiTreeBtn {
+  background: var(--accent); border: none; color: white;
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 10px;
+}
+.uitree-layout { display: flex; flex-direction: column; gap: 10px; }
+.tree-box { max-height: 260px; overflow-y: auto; }
+.tree-node {
+  padding: 2px 0 2px 8px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.tree-node:hover { border-left-color: var(--accent); background: #131722; }
+.tree-node.selected { border-left-color: var(--ok); background: #131722; }
+.tree-detail {
+  background: #0c0e12;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 11px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.tree-detail div { margin-bottom: 4px; word-break: break-word; }
+
+/* ---- Node actions + UPI/TX search ---- */
+.node-actions {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  border-top: 1px solid var(--border); padding-top: 8px;
+}
+.node-actions button {
+  background: #1f2430; border: 1px solid var(--border); color: var(--text);
+  padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 11px;
+}
+.node-actions input {
+  background: #0c0e12; border: 1px solid var(--border); color: var(--text);
+  padding: 6px; border-radius: 6px; font-size: 11px; width: 100%; margin-top: 6px;
+}
+#upiResults .tree-node { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; padding: 8px; }
