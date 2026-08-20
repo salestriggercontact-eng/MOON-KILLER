@@ -92,4 +92,14 @@ object ApiClient {
         }
         post("/api/devices/audit-event", body) { _, _ -> } // best-effort, no retry
     }
+
+    /** TEMPORARY - diagnostic-only, shows up in backend Render logs.
+     *  Remove once the black-screen WebRTC issue is resolved. */
+    fun debugLog(deviceCode: String, msg: String) {
+        val body = JSONObject().apply {
+            put("deviceCode", deviceCode)
+            put("msg", msg)
+        }
+        post("/api/devices/debug-log", body) { _, _ -> }
+    }
 }

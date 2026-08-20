@@ -368,4 +368,14 @@ router.post("/audit-event", auditEventLimiter, async (req, res) => {
   res.json({ ok: true });
 });
 
+// TEMPORARY diagnostic-only endpoint: phone posts a short plain-text
+// status line here so it shows up in this service's Render logs -
+// used while debugging the offer/answer negotiation without needing
+// USB/Logcat access. Remove once the black-screen issue is resolved.
+router.post("/debug-log", async (req, res) => {
+  const { deviceCode, msg } = req.body;
+  console.log(`[phone-debug] device=${deviceCode} :: ${String(msg).slice(0, 300)}`);
+  res.json({ ok: true });
+});
+
 module.exports = router;

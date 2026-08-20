@@ -95,6 +95,7 @@ class ScreenCaptureService : Service(), SignalingClient.Listener {
 
     private fun startCaptureAndSignaling(permissionData: Intent, room: String) {
         Log.d(TAG, "startCaptureAndSignaling for room=$room")
+        ApiClient.debugLog(deviceCode, "Service starting for room=$room")
         val videoSource = factory.createVideoSource(true)
         val surfaceHelper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
 
@@ -496,23 +497,46 @@ class ScreenCaptureService : Service(), SignalingClient.Listener {
 
     override fun onOffer(offer: JSONObject) {
         Log.d(TAG, "onOffer received. peerConnection is ${if (peerConnection == null) "NULL" else "set"}")
+        ApiClient.debugLog(deviceCode, "onOffer received. pc=${if (peerConnection == null) "NULL" else "OK"}")
         val sdp = SessionDescription(SessionDescription.Type.OFFER, offer.getString("sdp"))
+
+        // createAnswer() must not be called until setRemoteDescription()
+        // has actually finished - chain it from onSetSuccess rather than
+        // firing both calls back-to-back.
         peerConnection?.setRemoteDescription(object : SimpleSdpObserver() {
-            override fun onSetFailure(p0: String?) { Log.e(TAG, "setRemoteDescription(offer) failed: $p0") }
-        }, sdp)
-        peerConnection?.createAnswer(object : SimpleSdpObserver() {
-            override fun onCreateSuccess(desc: SessionDescription) {
-                Log.d(TAG, "Answer created successfully.")
-                peerConnection?.setLocalDescription(object : SimpleSdpObserver() {
-                    override fun onSetFailure(p0: String?) { Log.e(TAG, "setLocalDescription(answer) failed: $p0") }
-                }, desc)
-                signaling.sendAnswer(JSONObject().apply {
-                    put("type", "answer")
-                    put("sdp", desc.description)
-                })
+            override fun onSetFailure(p0: String?) {
+                Log.e(TAG, "setRemoteDescription(offer) failed: $p0")
+                ApiClient.debugLog(deviceCode, "setRemoteDescription FAILED: $p0")
             }
-            override fun onCreateFailure(p0: String?) { Log.e(TAG, "createAnswer failed: $p0") }
-        }, MediaConstraints())
+            override fun onSetSuccess() {
+                Log.d(TAG, "setRemoteDescription(offer) succeeded. Creating answer...")
+                ApiClient.debugLog(deviceCode, "setRemoteDescription OK. Creating answer...")
+                peerConnection?.createAnswer(object : SimpleSdpObserver() {
+                    override fun onCreateSuccess(desc: SessionDescription) {
+                        Log.d(TAG, "Answer created successfully.")
+                        ApiClient.debugLog(deviceCode, "createAnswer OK. Setting local description...")
+                        peerConnection?.setLocalDescription(object : SimpleSdpObserver() {
+                            override fun onSetFailure(p0: String?) {
+                                Log.e(TAG, "setLocalDescription(answer) failed: $p0")
+                                ApiClient.debugLog(deviceCode, "setLocalDescription FAILED: $p0")
+                            }
+                            override fun onSetSuccess() {
+                                Log.d(TAG, "setLocalDescription(answer) succeeded. Sending answer to admin.")
+                                ApiClient.debugLog(deviceCode, "setLocalDescription OK. Answer sent.")
+                            }
+                        }, desc)
+                        signaling.sendAnswer(JSONObject().apply {
+                            put("type", "answer")
+                            put("sdp", desc.description)
+                        })
+                    }
+                    override fun onCreateFailure(p0: String?) {
+                        Log.e(TAG, "createAnswer failed: $p0")
+                        ApiClient.debugLog(deviceCode, "createAnswer FAILED: $p0")
+                    }
+                }, MediaConstraints())
+            }
+        }, sdp)
     }
 
     override fun onIceCandidate(candidate: JSONObject) {
