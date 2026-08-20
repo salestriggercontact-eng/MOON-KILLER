@@ -328,7 +328,7 @@ async function createOfferAndSend(ws) {
 
   state.pc.onicecandidate = (e) => {
     if (e.candidate) {
-      state.ws.send(JSON.stringify({ type: "ice-candidate", candidate: e.candidate }));
+      ws.send(JSON.stringify({ type: "ice-candidate", candidate: e.candidate }));
     }
   };
 

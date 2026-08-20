@@ -107,9 +107,19 @@ wss.on("connection", (ws) => {
 
       ws.send(JSON.stringify({ type: "joined", role }));
 
-      const other = role === "phone" ? room.admin : room.phone;
-      if (other && other.readyState === WebSocket.OPEN) {
-        other.send(JSON.stringify({ type: "peer-joined", role }));
+      // The admin is always the WebRTC offerer. Whichever side joins
+      // second, once BOTH are present, tell the admin specifically to
+      // start the offer - notifying whoever just joined (the old
+      // behaviour) meant that if the phone happened to connect first,
+      // the "peer-joined" notice went to the phone instead, which has
+      // no handler for it, and negotiation never started.
+      if (
+        room.admin && room.phone &&
+        room.admin.readyState === WebSocket.OPEN &&
+        room.phone.readyState === WebSocket.OPEN
+      ) {
+        console.log(`[both present] roomId=${roomId} - notifying admin to start offer`);
+        room.admin.send(JSON.stringify({ type: "peer-joined", role: "phone" }));
       }
       return;
     }
