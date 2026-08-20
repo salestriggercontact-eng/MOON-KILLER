@@ -1,12 +1,21 @@
+# Dependencies
 node_modules/
+
+# Environment secrets
 .env
+
+# Android build output
 android-app/.gradle/
 android-app/app/build/
 android-app/build/
 android-app/local.properties
 android-app/*.iml
 android-app/.idea/
+
+# Electron / admin-app build output
 admin-app/dist/
 admin-app/out/
+
+# OS junk
 .DS_Store
 Thumbs.db

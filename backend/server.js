@@ -14,6 +14,11 @@ const auditRoutes = require("./routes/auditRoutes");
 
 const app = express();
 
+// Render (and most PaaS hosts) sit behind a reverse proxy that sets
+// X-Forwarded-For. Without this, express-rate-limit can't safely trust
+// that header and throws on every request.
+app.set("trust proxy", 1);
+
 connectDB();
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
