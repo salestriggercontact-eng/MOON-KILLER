@@ -236,14 +236,16 @@ function startWebRTC(roomId) {
 }
 
 function openSignalingSocket(roomId) {
-  state.ws = new WebSocket(state.signalingUrl);
+  const ws = new WebSocket(state.signalingUrl);
+  state.ws = ws;
 
-  state.ws.onopen = () => {
+  ws.onopen = () => {
+    if (state.ws !== ws) return; // superseded by a newer socket, ignore
     state.wsReconnectAttempt = 0;
-    state.ws.send(JSON.stringify({ type: "join", roomId, role: "admin", token: state.token }));
+    ws.send(JSON.stringify({ type: "join", roomId, role: "admin", token: state.token }));
   };
 
-  state.ws.onmessage = async (event) => {
+  ws.onmessage = async (event) => {
     const msg = JSON.parse(event.data);
 
     if (msg.type === "peer-joined" && msg.role === "phone") {
@@ -256,7 +258,7 @@ function openSignalingSocket(roomId) {
       await state.pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
       const answer = await state.pc.createAnswer();
       await state.pc.setLocalDescription(answer);
-      state.ws.send(JSON.stringify({ type: "answer", answer }));
+      ws.send(JSON.stringify({ type: "answer", answer }));
     }
 
     if (msg.type === "answer") {
@@ -277,8 +279,9 @@ function openSignalingSocket(roomId) {
     }
   };
 
-  state.ws.onerror = () => log("Signaling connection error.");
-  state.ws.onclose = () => {
+  ws.onerror = () => log("Signaling connection error.");
+  ws.onclose = () => {
+    if (state.ws !== ws) return; // an older socket closing, nothing to do
     if (state.wsClosedIntentionally) return;
     if (!state.currentSessionId) return; // session already ended cleanly
     log("Signaling connection lost - reconnecting...");
