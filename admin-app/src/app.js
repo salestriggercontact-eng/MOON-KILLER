@@ -192,6 +192,16 @@ $("submitPairBtn").addEventListener("click", async () => {
 // ---- Connect / session ----
 
 async function connectToDevice(deviceCode) {
+  // Tear down any leftover socket/reconnect-timer from a previous,
+  // never-cleanly-ended session before starting a fresh one - otherwise
+  // its delayed reconnect can fire mid-negotiation and steal state.ws.
+  state.wsClosedIntentionally = true;
+  if (state.ws) {
+    try { state.ws.close(); } catch {}
+  }
+  state.ws = null;
+  state.wsReconnectAttempt = 0;
+
   try {
     $("sessionStatus").textContent = "Requesting connection - waiting for approval on phone...";
     const { requestId, signalingRoom } = await api("/api/devices/request-connect", {
@@ -250,7 +260,11 @@ function openSignalingSocket(roomId) {
 
     if (msg.type === "peer-joined" && msg.role === "phone") {
       log("Phone connected. Starting screen share request...");
-      await createOfferAndSend();
+      try {
+        await createOfferAndSend(ws);
+      } catch (e) {
+        log(`ERROR creating offer: ${e.name || ""} ${e.message || e}`);
+      }
     }
 
     if (msg.type === "offer") {
@@ -262,10 +276,13 @@ function openSignalingSocket(roomId) {
     }
 
     if (msg.type === "answer") {
+      log("Answer received from phone.");
       await state.pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+      log("Remote description (answer) set.");
     }
 
     if (msg.type === "ice-candidate" && msg.candidate) {
+      log("ICE candidate received from phone.");
       try {
         await state.pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
       } catch (e) {
@@ -295,7 +312,8 @@ function openSignalingSocket(roomId) {
   };
 }
 
-async function createOfferAndSend() {
+async function createOfferAndSend(ws) {
+  log("Creating peer connection...");
   state.pc = new RTCPeerConnection({
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
@@ -306,6 +324,7 @@ async function createOfferAndSend() {
       }
     ]
   });
+  log(`Peer connection created. State: ${state.pc.connectionState}`);
 
   state.pc.onicecandidate = (e) => {
     if (e.candidate) {
@@ -322,6 +341,14 @@ async function createOfferAndSend() {
       if (state.isRecording) stopRecording();
       endSession("ice_failed");
     }
+  };
+
+  state.pc.oniceconnectionstatechange = () => {
+    log(`ICE connection state: ${state.pc.iceConnectionState}`);
+  };
+
+  state.pc.onicegatheringstatechange = () => {
+    log(`ICE gathering state: ${state.pc.iceGatheringState}`);
   };
 
   state.pc.ontrack = (e) => {
@@ -347,7 +374,9 @@ async function createOfferAndSend() {
 
   const offer = await state.pc.createOffer({ offerToReceiveVideo: true });
   await state.pc.setLocalDescription(offer);
-  state.ws.send(JSON.stringify({ type: "offer", offer }));
+  log("Offer created and set. Sending to phone...");
+  ws.send(JSON.stringify({ type: "offer", offer }));
+  log("Offer sent.");
 }
 
 // ---- Data channel message handling (control acks + chunked transfers) ----

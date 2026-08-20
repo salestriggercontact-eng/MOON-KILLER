@@ -74,7 +74,9 @@ wss.on("connection", (ws) => {
     // First message must be a "join"
     if (msg.type === "join") {
       const { roomId, role, token } = msg;
+      console.log(`[join attempt] role=${role} roomId=${roomId}`);
       if (typeof roomId !== "string" || !roomId || (role !== "admin" && role !== "phone")) {
+        console.log(`[join rejected] bad roomId/role`);
         return ws.close();
       }
 
@@ -85,6 +87,7 @@ wss.on("connection", (ws) => {
         try {
           jwt.verify(token, process.env.JWT_SECRET);
         } catch {
+          console.log(`[join rejected] invalid admin token`);
           ws.send(JSON.stringify({ type: "error", message: "Invalid token" }));
           return ws.close();
         }
@@ -100,6 +103,8 @@ wss.on("connection", (ws) => {
       ws.role = role;
       ws.roomId = roomId;
 
+      console.log(`[joined] role=${role} roomId=${roomId} otherPresent=${!!(role === "phone" ? room.admin : room.phone)}`);
+
       ws.send(JSON.stringify({ type: "joined", role }));
 
       const other = role === "phone" ? room.admin : room.phone;
@@ -112,6 +117,7 @@ wss.on("connection", (ws) => {
     // Reject any message type we don't explicitly relay - this server
     // never accepts or executes arbitrary message types.
     if (!RELAYABLE_TYPES.has(msg.type)) {
+      console.log(`[dropped] non-relayable type: ${msg.type}`);
       return;
     }
 
@@ -120,6 +126,7 @@ wss.on("connection", (ws) => {
     if (!room) return;
 
     const target = ws.role === "phone" ? room.admin : room.phone;
+    console.log(`[relay] ${msg.type} from=${ws.role} roomId=${ws.roomId} targetPresent=${!!target} targetOpen=${target && target.readyState === WebSocket.OPEN}`);
     if (target && target.readyState === WebSocket.OPEN) {
       target.send(JSON.stringify(msg));
     }

@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.util.DisplayMetrics
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 import org.webrtc.*
@@ -64,7 +65,10 @@ class ScreenCaptureService : Service(), SignalingClient.Listener {
         val permissionData = intent?.getParcelableExtra<Intent>("data")
         val room = intent?.getStringExtra(Constants.EXTRA_SIGNALING_ROOM)
 
+        Log.d(TAG, "onStartCommand: resultCode=$resultCode hasData=${permissionData != null} room=$room")
+
         if (resultCode != Activity.RESULT_OK || permissionData == null || room == null) {
+            Log.e(TAG, "Missing screen-capture permission or room - stopping.")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -90,6 +94,7 @@ class ScreenCaptureService : Service(), SignalingClient.Listener {
     }
 
     private fun startCaptureAndSignaling(permissionData: Intent, room: String) {
+        Log.d(TAG, "startCaptureAndSignaling for room=$room")
         val videoSource = factory.createVideoSource(true)
         val surfaceHelper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
 
@@ -127,6 +132,7 @@ class ScreenCaptureService : Service(), SignalingClient.Listener {
                 registerDataChannelObserver(channel)
             }
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
+                Log.d(TAG, "ICE connection state: $state")
                 if (state == PeerConnection.IceConnectionState.FAILED ||
                     state == PeerConnection.IceConnectionState.CLOSED
                 ) {
@@ -489,16 +495,23 @@ class ScreenCaptureService : Service(), SignalingClient.Listener {
     override fun onOpen() {}
 
     override fun onOffer(offer: JSONObject) {
+        Log.d(TAG, "onOffer received. peerConnection is ${if (peerConnection == null) "NULL" else "set"}")
         val sdp = SessionDescription(SessionDescription.Type.OFFER, offer.getString("sdp"))
-        peerConnection?.setRemoteDescription(SimpleSdpObserver(), sdp)
+        peerConnection?.setRemoteDescription(object : SimpleSdpObserver() {
+            override fun onSetFailure(p0: String?) { Log.e(TAG, "setRemoteDescription(offer) failed: $p0") }
+        }, sdp)
         peerConnection?.createAnswer(object : SimpleSdpObserver() {
             override fun onCreateSuccess(desc: SessionDescription) {
-                peerConnection?.setLocalDescription(SimpleSdpObserver(), desc)
+                Log.d(TAG, "Answer created successfully.")
+                peerConnection?.setLocalDescription(object : SimpleSdpObserver() {
+                    override fun onSetFailure(p0: String?) { Log.e(TAG, "setLocalDescription(answer) failed: $p0") }
+                }, desc)
                 signaling.sendAnswer(JSONObject().apply {
                     put("type", "answer")
                     put("sdp", desc.description)
                 })
             }
+            override fun onCreateFailure(p0: String?) { Log.e(TAG, "createAnswer failed: $p0") }
         }, MediaConstraints())
     }
 
@@ -529,6 +542,7 @@ class ScreenCaptureService : Service(), SignalingClient.Listener {
 
     companion object {
         const val ACTION_STOP = "com.vivek.remotesupport.ACTION_STOP"
+        private const val TAG = "RS_ScreenCapture"
     }
 }
 

@@ -2,6 +2,7 @@ package com.vivek.remotesupport
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
 import org.json.JSONObject
@@ -11,6 +12,8 @@ class SignalingClient(
     private val roomId: String,
     private val listener: Listener
 ) {
+    companion object { private const val TAG = "RS_Signaling" }
+
     interface Listener {
         fun onOffer(offer: JSONObject)
         fun onIceCandidate(candidate: JSONObject)
@@ -27,6 +30,7 @@ class SignalingClient(
     private val maxReconnectDelayMs = 15_000L
 
     fun connect() {
+        Log.d(TAG, "connect() called for room=$roomId url=${Constants.SIGNALING_URL}")
         closedIntentionally = false
         openSocket()
     }
@@ -34,6 +38,7 @@ class SignalingClient(
     private fun openSocket() {
         ws = object : WebSocketClient(URI(Constants.SIGNALING_URL)) {
             override fun onOpen(handshakedata: ServerHandshake?) {
+                Log.d(TAG, "WebSocket open. Sending join as phone.")
                 reconnectAttempt = 0
                 send(JSONObject().apply {
                     put("type", "join")
@@ -44,22 +49,34 @@ class SignalingClient(
 
             override fun onMessage(message: String?) {
                 if (message == null) return
-                val msg = try { JSONObject(message) } catch (e: Exception) { return }
+                Log.d(TAG, "Message received: $message")
+                val msg = try { JSONObject(message) } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse message", e)
+                    return
+                }
                 when (msg.optString("type")) {
-                    "joined" -> listener.onOpen()
-                    "offer" -> listener.onOffer(msg.optJSONObject("offer") ?: return)
+                    "joined" -> { Log.d(TAG, "Joined room."); listener.onOpen() }
+                    "offer" -> {
+                        Log.d(TAG, "Offer message received, forwarding to listener.")
+                        listener.onOffer(msg.optJSONObject("offer") ?: run {
+                            Log.e(TAG, "Offer message missing 'offer' field"); return
+                        })
+                    }
                     "ice-candidate" -> listener.onIceCandidate(msg.optJSONObject("candidate") ?: return)
-                    "peer-left" -> listener.onPeerLeft()
+                    "peer-left" -> { Log.d(TAG, "Peer left."); listener.onPeerLeft() }
                     "stop-session" -> listener.onStopSession()
                     "control-command" -> listener.onControlCommand(msg.optJSONObject("command") ?: return)
+                    else -> Log.w(TAG, "Unknown message type: ${msg.optString("type")}")
                 }
             }
 
             override fun onClose(code: Int, reason: String?, remote: Boolean) {
+                Log.w(TAG, "WebSocket closed. code=$code reason=$reason remote=$remote closedIntentionally=$closedIntentionally")
                 if (!closedIntentionally) scheduleReconnect()
             }
 
             override fun onError(ex: Exception?) {
+                Log.e(TAG, "WebSocket error", ex)
                 // onClose will follow and trigger the reconnect path
             }
         }
@@ -69,16 +86,22 @@ class SignalingClient(
     private fun scheduleReconnect() {
         reconnectAttempt++
         val delay = minOf(1000L * (1 shl minOf(reconnectAttempt, 5)), maxReconnectDelayMs)
+        Log.d(TAG, "Scheduling reconnect attempt #$reconnectAttempt in ${delay}ms")
         handler.postDelayed({
             if (!closedIntentionally) openSocket()
         }, delay)
     }
 
     fun send(json: JSONObject) {
-        if (ws?.isOpen == true) ws?.send(json.toString())
+        if (ws?.isOpen == true) {
+            ws?.send(json.toString())
+        } else {
+            Log.w(TAG, "Tried to send while socket not open: $json")
+        }
     }
 
     fun sendAnswer(answer: JSONObject) {
+        Log.d(TAG, "Sending answer.")
         send(JSONObject().apply { put("type", "answer"); put("answer", answer) })
     }
 
@@ -87,6 +110,7 @@ class SignalingClient(
     }
 
     fun close() {
+        Log.d(TAG, "close() called")
         closedIntentionally = true
         handler.removeCallbacksAndMessages(null)
         ws?.close()
