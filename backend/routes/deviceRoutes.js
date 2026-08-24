@@ -1,6 +1,5 @@
 const express = require("express");
 const crypto = require("crypto");
-const rateLimit = require("express-rate-limit");
 const Device = require("../models/Device");
 const PendingRequest = require("../models/PendingRequest");
 const Session = require("../models/Session");
@@ -11,47 +10,42 @@ const { validateDeviceCode, validateBody } = require("../config/validators");
 
 const router = express.Router();
 
-// ---- PHONE ENDPOINTS ----
-// 1. Register device — auto-pair with first admin (or create if none)
+// ---------- PHONE (DEVICE) ENDPOINTS ----------
+// Register device — auto-pair with any admin
 router.post(
   "/register",
   validateBody({ deviceCode: validateDeviceCode }),
   async (req, res) => {
     const { deviceCode, deviceModel, androidVersion } = req.body;
     let device = await Device.findOne({ deviceCode });
-    
+
     if (!device) {
-      // Create new device
       device = new Device({
         deviceCode,
         deviceModel: deviceModel || "Unknown",
         androidVersion: androidVersion || "",
         isOnline: true,
         lastSeenAt: new Date(),
-        // Auto-pair with the first admin (or any admin if exists)
         pairedAdmins: []
       });
-      
-      // Find any admin to auto-pair
+      // Auto-pair with the first admin (any admin)
       const anyAdmin = await Admin.findOne({});
       if (anyAdmin) {
         device.pairedAdmins = [anyAdmin._id];
       }
       await device.save();
     } else {
-      // Update online status
       device.isOnline = true;
       device.lastSeenAt = new Date();
       if (deviceModel) device.deviceModel = deviceModel;
       if (androidVersion) device.androidVersion = androidVersion;
       await device.save();
     }
-
     res.json({ ok: true, deviceCode: device.deviceCode });
   }
 );
 
-// 2. Heartbeat
+// Heartbeat
 router.post(
   "/heartbeat",
   validateBody({ deviceCode: validateDeviceCode }),
@@ -65,7 +59,7 @@ router.post(
   }
 );
 
-// 3. Get pending request (phone polls this)
+// Get pending request (phone polls)
 router.get("/pending-request", async (req, res) => {
   const { deviceCode } = req.query;
   const err = validateDeviceCode(deviceCode);
@@ -85,7 +79,7 @@ router.get("/pending-request", async (req, res) => {
   });
 });
 
-// 4. Respond to pending request (phone approves)
+// Respond to pending request
 router.post("/pending-request/:id/respond", async (req, res) => {
   const { approve } = req.body;
   if (typeof approve !== "boolean") {
@@ -101,7 +95,7 @@ router.post("/pending-request/:id/respond", async (req, res) => {
   res.json({ ok: true, status: request.status });
 });
 
-// ---- ADMIN ENDPOINTS ----
+// ---------- ADMIN ENDPOINTS ----------
 // List all devices (no pairing filter)
 router.get("/", authMiddleware, async (req, res) => {
   const devices = await Device.find({}).select(
@@ -126,8 +120,6 @@ router.post(
     if (!device) {
       return res.status(404).json({ error: "Device not registered" });
     }
-
-    // Check for existing pending/approved request
     const existing = await PendingRequest.findOne({
       deviceCode,
       adminUsername: req.admin.username,
@@ -141,10 +133,7 @@ router.post(
         sessionId: null
       });
     }
-
     const signalingRoom = `${deviceCode}-${crypto.randomBytes(4).toString("hex")}`;
-
-    // Auto-approve: create pending request as "approved"
     const request = await PendingRequest.create({
       deviceCode,
       adminUsername: req.admin.username,
@@ -152,8 +141,6 @@ router.post(
       status: "approved",
       signalingRoom
     });
-
-    // Create session record
     const session = await Session.create({
       deviceCode,
       requestedByAdmin: req.admin.username,
@@ -161,7 +148,6 @@ router.post(
       status: "active",
       startedAt: new Date()
     });
-
     await audit({
       actorType: "admin",
       actor: req.admin.username,
@@ -170,7 +156,6 @@ router.post(
       ip: req.ip,
       metadata: { sessionId: session._id }
     });
-
     res.json({
       requestId: request._id,
       signalingRoom,
@@ -193,10 +178,5 @@ router.get("/request-status/:id", authMiddleware, async (req, res) => {
     signalingRoom: request.signalingRoom || null
   });
 });
-
-// (Keep other endpoints: /unpair, /audit-event, /debug-log unchanged)
-// For brevity, they are same as your original, but I'll include them below.
-
-// ... (copy the rest of your deviceRoutes.js for unpair, audit-event, debug-log)
 
 module.exports = router;
