@@ -11,7 +11,7 @@ const { validateDeviceCode, validateBody } = require("../config/validators");
 const router = express.Router();
 
 // ---------- PHONE (DEVICE) ENDPOINTS ----------
-// Register device — auto-pair with any admin
+// Register device — auto-pair with first admin
 router.post(
   "/register",
   validateBody({ deviceCode: validateDeviceCode }),
@@ -28,7 +28,7 @@ router.post(
         lastSeenAt: new Date(),
         pairedAdmins: []
       });
-      // Auto-pair with the first admin (any admin)
+      // Auto-pair with the FIRST admin (if exists)
       const anyAdmin = await Admin.findOne({});
       if (anyAdmin) {
         device.pairedAdmins = [anyAdmin._id];
@@ -41,6 +41,7 @@ router.post(
       if (androidVersion) device.androidVersion = androidVersion;
       await device.save();
     }
+
     res.json({ ok: true, deviceCode: device.deviceCode });
   }
 );
@@ -59,7 +60,7 @@ router.post(
   }
 );
 
-// Get pending request (phone polls)
+// Phone polls for pending request
 router.get("/pending-request", async (req, res) => {
   const { deviceCode } = req.query;
   const err = validateDeviceCode(deviceCode);
@@ -79,7 +80,7 @@ router.get("/pending-request", async (req, res) => {
   });
 });
 
-// Respond to pending request
+// Phone responds to pending request
 router.post("/pending-request/:id/respond", async (req, res) => {
   const { approve } = req.body;
   if (typeof approve !== "boolean") {
@@ -96,7 +97,7 @@ router.post("/pending-request/:id/respond", async (req, res) => {
 });
 
 // ---------- ADMIN ENDPOINTS ----------
-// List all devices (no pairing filter)
+// List ALL devices (no pairing filter)
 router.get("/", authMiddleware, async (req, res) => {
   const devices = await Device.find({}).select(
     "deviceCode deviceModel androidVersion isOnline lastSeenAt"
@@ -120,6 +121,7 @@ router.post(
     if (!device) {
       return res.status(404).json({ error: "Device not registered" });
     }
+
     const existing = await PendingRequest.findOne({
       deviceCode,
       adminUsername: req.admin.username,
@@ -133,6 +135,7 @@ router.post(
         sessionId: null
       });
     }
+
     const signalingRoom = `${deviceCode}-${crypto.randomBytes(4).toString("hex")}`;
     const request = await PendingRequest.create({
       deviceCode,
