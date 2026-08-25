@@ -10,15 +10,13 @@ const { validateDeviceCode, validateBody } = require("../config/validators");
 
 const router = express.Router();
 
-// ---------- PHONE (DEVICE) ENDPOINTS ----------
-// Register device — auto-pair with first admin
+// ---------- PHONE ENDPOINTS ----------
 router.post(
   "/register",
   validateBody({ deviceCode: validateDeviceCode }),
   async (req, res) => {
     const { deviceCode, deviceModel, androidVersion } = req.body;
     let device = await Device.findOne({ deviceCode });
-
     if (!device) {
       device = new Device({
         deviceCode,
@@ -28,11 +26,8 @@ router.post(
         lastSeenAt: new Date(),
         pairedAdmins: []
       });
-      // Auto-pair with the FIRST admin (if exists)
       const anyAdmin = await Admin.findOne({});
-      if (anyAdmin) {
-        device.pairedAdmins = [anyAdmin._id];
-      }
+      if (anyAdmin) device.pairedAdmins = [anyAdmin._id];
       await device.save();
     } else {
       device.isOnline = true;
@@ -41,12 +36,10 @@ router.post(
       if (androidVersion) device.androidVersion = androidVersion;
       await device.save();
     }
-
     res.json({ ok: true, deviceCode: device.deviceCode });
   }
 );
 
-// Heartbeat
 router.post(
   "/heartbeat",
   validateBody({ deviceCode: validateDeviceCode }),
@@ -60,7 +53,6 @@ router.post(
   }
 );
 
-// Phone polls for pending request
 router.get("/pending-request", async (req, res) => {
   const { deviceCode } = req.query;
   const err = validateDeviceCode(deviceCode);
@@ -80,7 +72,6 @@ router.get("/pending-request", async (req, res) => {
   });
 });
 
-// Phone responds to pending request
 router.post("/pending-request/:id/respond", async (req, res) => {
   const { approve } = req.body;
   if (typeof approve !== "boolean") {
@@ -97,7 +88,6 @@ router.post("/pending-request/:id/respond", async (req, res) => {
 });
 
 // ---------- ADMIN ENDPOINTS ----------
-// List ALL devices (no pairing filter)
 router.get("/", authMiddleware, async (req, res) => {
   const devices = await Device.find({}).select(
     "deviceCode deviceModel androidVersion isOnline lastSeenAt"
@@ -110,17 +100,21 @@ router.get("/", authMiddleware, async (req, res) => {
   res.json(withStatus);
 });
 
-// Request session — auto-approve (no pairing code)
 router.post(
   "/request-connect",
   authMiddleware,
   validateBody({ deviceCode: validateDeviceCode }),
   async (req, res) => {
     const { deviceCode } = req.body;
-    const device = await Device.findOne({ deviceCode });
+    let device = await Device.findOne({ deviceCode });
     if (!device) {
       return res.status(404).json({ error: "Device not registered" });
     }
+
+    // ✅ FORCE ONLINE
+    device.isOnline = true;
+    device.lastSeenAt = new Date();
+    await device.save();
 
     const existing = await PendingRequest.findOne({
       deviceCode,
@@ -167,7 +161,6 @@ router.post(
   }
 );
 
-// Get request status
 router.get("/request-status/:id", authMiddleware, async (req, res) => {
   const request = await PendingRequest.findById(req.params.id);
   if (!request) return res.status(404).json({ error: "Not found" });
