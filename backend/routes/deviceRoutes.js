@@ -10,13 +10,12 @@ const { validateDeviceCode, validateBody } = require("../config/validators");
 
 const router = express.Router();
 
-// ===== IN-MEMORY COMMAND QUEUE (reset on server restart) =====
-// For production, use Redis or DB. For testing lab, memory is fine.
-let commandQueue = {};       // key: deviceCode, value: array of {command, params, timestamp}
-let commandResults = {};     // key: deviceCode, value: array of {result, timestamp}
+// ===== IN-MEMORY COMMAND QUEUE =====
+let commandQueue = {};
+let commandResults = {};
 
 // ---------- PHONE (DEVICE) ENDPOINTS ----------
-// Register device — auto-pair with first admin
+// Register
 router.post(
   "/register",
   validateBody({ deviceCode: validateDeviceCode }),
@@ -33,7 +32,6 @@ router.post(
         lastSeenAt: new Date(),
         pairedAdmins: []
       });
-      // Auto-pair with the FIRST admin (if exists)
       const anyAdmin = await Admin.findOne({});
       if (anyAdmin) {
         device.pairedAdmins = [anyAdmin._id];
@@ -46,7 +44,6 @@ router.post(
       if (androidVersion) device.androidVersion = androidVersion;
       await device.save();
     }
-
     res.json({ ok: true, deviceCode: device.deviceCode });
   }
 );
@@ -65,7 +62,7 @@ router.post(
   }
 );
 
-// Phone polls for pending session request
+// Phone polls pending request
 router.get("/pending-request", async (req, res) => {
   const { deviceCode } = req.query;
   const err = validateDeviceCode(deviceCode);
@@ -101,36 +98,32 @@ router.post("/pending-request/:id/respond", async (req, res) => {
   res.json({ ok: true, status: request.status });
 });
 
-// ===== NEW: COMMAND POLLING ENDPOINTS =====
-// Admin posts a command to be executed on phone
+// ===== COMMAND POLLING ENDPOINTS =====
+// Admin sends command
 router.post(
   "/command",
   authMiddleware,
   validateBody({ deviceCode: validateDeviceCode, command: (v) => typeof v === "string" }),
   async (req, res) => {
     const { deviceCode, command, params } = req.body;
+    console.log(`[COMMAND] Received: ${command} for ${deviceCode}`);
     if (!commandQueue[deviceCode]) commandQueue[deviceCode] = [];
     commandQueue[deviceCode].push({ command, params: params || {}, timestamp: Date.now() });
-    // Keep queue size limited (optional)
-    if (commandQueue[deviceCode].length > 100) commandQueue[deviceCode].shift();
     res.json({ ok: true });
   }
 );
 
-// Phone polls for commands (GET)
+// Phone polls commands
 router.get("/command/poll", async (req, res) => {
   const { deviceCode } = req.query;
   if (!deviceCode) return res.status(400).json({ error: "deviceCode required" });
   const queue = commandQueue[deviceCode] || [];
-  if (queue.length === 0) {
-    return res.json({ commands: [] });
-  }
-  // Return all commands at once (or just first)
-  const commands = queue.splice(0, queue.length); // Remove all
+  if (queue.length === 0) return res.json({ commands: [] });
+  const commands = queue.splice(0, queue.length);
   res.json({ commands });
 });
 
-// Phone sends command result (optional)
+// Phone sends command result
 router.post(
   "/command/result",
   validateBody({ deviceCode: validateDeviceCode, result: (v) => typeof v === "string" }),
@@ -147,12 +140,12 @@ router.get("/command/results", authMiddleware, async (req, res) => {
   const { deviceCode } = req.query;
   if (!deviceCode) return res.status(400).json({ error: "deviceCode required" });
   const results = commandResults[deviceCode] || [];
-  commandResults[deviceCode] = []; // Clear after reading
+  commandResults[deviceCode] = [];
   res.json({ results });
 });
 
 // ---------- ADMIN ENDPOINTS ----------
-// List ALL devices (no pairing filter)
+// List devices
 router.get("/", authMiddleware, async (req, res) => {
   const devices = await Device.find({}).select(
     "deviceCode deviceModel androidVersion isOnline lastSeenAt"
@@ -165,7 +158,7 @@ router.get("/", authMiddleware, async (req, res) => {
   res.json(withStatus);
 });
 
-// Request session — auto-approve (no pairing code)
+// Request session
 router.post(
   "/request-connect",
   authMiddleware,
